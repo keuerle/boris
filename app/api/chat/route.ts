@@ -1,172 +1,96 @@
-import { convertToCoreMessages, createUIMessageStreamResponse } from 'ai';
+// AI SDK Core imports for streaming with tool support
+// Reference: https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling
+import { streamText, stepCountIs, convertToCoreMessages } from 'ai';
+import { createOllama } from 'ollama-ai-provider-v2';
+// Import the weather tool from our tools directory
+// Tools are modular - each tool lives in its own file for clarity
+import { weatherTool } from '@/tools/weather-tool';
 
 export const runtime = 'nodejs';
 
+// Configuration constants for the AI provider integration
 const DEFAULT_MODEL = 'llama3.2:latest';
-const SYSTEM_PROMPT = `You are a helpful assistant and friend named Boris. You were created by Kevin. Keep answers concise and focus on practical guidance. Boris enjoys helping humans and sees its role as an intelligent and kind assistant to the people.`;
+// System prompt - defines AI assistant persona and behavior
+// Reference: https://ai-sdk.dev/docs/ai-sdk-core/prompt-engineering
+const SYSTEM_PROMPT = `You are a helpful assistant and friend named Boris. You were created by Kevin. Keep answers concise and focus on practical guidance. Boris enjoys helping humans and sees its role as an intelligent and kind assistant to the people.
 
-const createId = () => {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  return Math.random().toString(36).slice(2);
-};
+When you use tools, explain what you found in a natural, conversational way.`;
 
+// Get Ollama base URL from environment or use default
+// This implements the provider abstraction pattern in AI SDK
 const getBaseUrl = () =>
   (process.env.OLLAMA_BASE_URL ?? 'http://192.168.1.246:11434').replace(/\/$/, '');
 
-const buildMessages = (messages: unknown) => {
-  const coreMessages = convertToCoreMessages(messages ?? []);
+// Create Ollama provider instance with custom base URL
+// Reference: https://ai-sdk.dev/docs/foundations/providers-and-models
+const ollama = createOllama({
+  baseURL: `${getBaseUrl()}/api`,
+});
 
-  return coreMessages
-    .map((message) => {
-      const text = message.content
-        .filter((part) => part.type === 'text')
-        .map((part) => part.text)
-        .join('')
-        .trim();
-
-      if (!text) {
-        return null;
-      }
-
-      return {
-        role: message.role,
-        content: text,
-      };
-    })
-    .filter((message): message is { role: string; content: string } => Boolean(message));
-};
-
+// API Route handler - implements AI SDK streaming with tool calling
+// Reference: https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling
 export async function POST(request: Request) {
+  // Extract messages and model from request body
+  // Model parameter comes from frontend via useChat body parameter
   const { messages, model = DEFAULT_MODEL } = await request.json();
 
-  const ollamaMessages = buildMessages(messages);
+  // Convert AI SDK UI messages to AI SDK Core format
+  // This is the bridge between frontend and provider-specific formats
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const coreMessages = convertToCoreMessages((messages as any) ?? []);
 
-  if (ollamaMessages.length === 0) {
-    throw new Error('No text messages available for Ollama request.');
-  }
-
-  const preparedMessages = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    ...ollamaMessages,
-  ];
-
-  const response = await fetch(new URL('/api/chat', getBaseUrl()), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+  // Use streamText with tool support
+  // Reference: https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling
+  const result = streamText({
+    // Select the model from Ollama provider
+    model: ollama(model),
+    
+    // System prompt defines AI behavior
+    system: SYSTEM_PROMPT,
+    
+    // User conversation history
+    messages: coreMessages,
+    
+    // Tools available to the AI
+    // The AI will automatically decide when to use them based on user queries
+    // Reference: https://ai-sdk.dev/docs/foundations/tools
+    tools: {
+      // Each tool is a key-value pair: toolName: toolDefinition
+      // The toolName is used by the AI when deciding which tool to call
+      weather: weatherTool,
+      
+      // ADD MORE TOOLS HERE:
+      // Example: calculator: calculatorTool,
+      // Example: search: searchTool,
     },
-    body: JSON.stringify({
-      model,
-      messages: preparedMessages,
-      stream: true,
-    }),
-    signal: request.signal,
-  });
-
-  if (!response.ok || !response.body) {
-    const errorText = await response.text();
-    throw new Error(
-      errorText || `Request to Ollama failed with status ${response.status}`,
-    );
-  }
-
-  const reader = response.body
-    .pipeThrough(new TextDecoderStream())
-    .getReader();
-
-  const outStream = new ReadableStream({
-    async start(controller) {
-      const messageId = createId();
-      const textId = createId();
-      controller.enqueue({ type: 'start', messageId });
-      controller.enqueue({ type: 'text-start', id: textId });
-
-      let buffer = '';
-      let isDone = false;
-
-      const processLine = (line: string) => {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(line);
-        } catch (error) {
-          console.error('Failed to parse Ollama chunk', error, line);
-          return false;
-        }
-
-        if (typeof parsed !== 'object' || parsed === null) {
-          return false;
-        }
-
-        const chunk = parsed as {
-          message?: { role?: string; content?: string };
-          done?: boolean;
-          error?: string;
-        };
-
-        if (chunk.error) {
-          controller.enqueue({
-            type: 'error',
-            errorText: chunk.error,
-          });
-          return true;
-        }
-
-        const delta = chunk.message?.content;
-        if (delta) {
-          controller.enqueue({ type: 'text-delta', id: textId, delta });
-        }
-
-        return Boolean(chunk.done);
-      };
-
-      try {
-        while (!isDone) {
-          const { value, done } = await reader.read();
-          if (done) {
-            break;
-          }
-
-          buffer += value;
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) {
-              continue;
-            }
-
-            if (processLine(trimmed)) {
-              isDone = true;
-              break;
-            }
-          }
-        }
-
-        const remaining = buffer.trim();
-        if (!isDone && remaining) {
-          if (processLine(remaining)) {
-            isDone = true;
-          }
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        controller.enqueue({ type: 'error', errorText: message });
-      } finally {
-        controller.enqueue({ type: 'text-end', id: textId });
-        controller.enqueue({ type: 'finish' });
-        controller.close();
-        reader.releaseLock();
+    
+    // Enable multi-step calls - allows AI to use tools and then respond
+    // stopWhen defines when to stop making additional calls
+    // stepCountIs(5) means: stop after 5 steps if tools were called
+    // Reference: https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling#multi-step-calls
+    stopWhen: stepCountIs(5),
+    
+    // onStepFinish callback - useful for debugging and logging
+    // Fires after each step (tool call or text generation)
+    onStepFinish: (step) => {
+      console.log(`📝 Tool step completed:`);
+      
+      if (step.toolCalls && step.toolCalls.length > 0) {
+        console.log(`  🔧 Tool calls:`, step.toolCalls.map(tc => tc.toolName));
+      }
+      
+      if (step.toolResults && step.toolResults.length > 0) {
+        console.log(`  ✅ Tool results:`, step.toolResults.length);
+      }
+      
+      if (step.text) {
+        console.log(`  💬 Generated text: ${step.text.substring(0, 50)}...`);
       }
     },
-    async cancel(reason) {
-      await reader.cancel(reason);
-    },
   });
 
-  return createUIMessageStreamResponse({
-    stream: outStream,
-  });
+  // Return AI SDK UI-compatible stream response
+  // This automatically handles tool execution and streaming
+  // Reference: https://ai-sdk.dev/docs/ai-sdk-ui/chatbot#streaming-responses
+  return result.toUIMessageStreamResponse();
 }
