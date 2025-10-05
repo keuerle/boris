@@ -26,7 +26,7 @@ import {
   Actions,
   Action,
 } from '@/components/ai-elements/actions';
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useRef } from 'react';
 // AI SDK React Hook - Core hook for chat functionality
 // Reference: https://ai-sdk.dev/docs/ai-sdk-ui/chatbot
 import { useChat } from '@ai-sdk/react';
@@ -54,12 +54,16 @@ import {
 import { weatherToolDescriptions } from '@/tools/weather-tool';
 // Import shared configuration
 import { models, DEFAULT_MODEL } from '@/lib/config';
+import { Header } from '@/components/ui/header';
 
 const ChatBotDemo = () => {
   // Local state for input management and model selection
   const [input, setInput] = useState('');
   const [model, setModel] = useState<string>(DEFAULT_MODEL);
   const [thinkMode, setThinkMode] = useState(false);
+  
+  // Ref for textarea to control focus/blur (used to dismiss mobile keyboard)
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // AI SDK useChat hook - provides core chat functionality
   // Returns: messages (conversation history), sendMessage (send new messages),
@@ -92,11 +96,16 @@ const ChatBotDemo = () => {
       },
     );
     setInput(''); // Clear input after sending
+    
+    // Blur the textarea to dismiss mobile keyboard
+    textareaRef.current?.blur();
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 relative size-full h-screen">
-      <div className="flex flex-col h-full">
+    <div className="flex flex-col h-screen-svh">
+      <Header />
+      <div className="max-w-4xl mx-auto px-3 py-4 md:px-6 md:py-6 relative size-full flex-1">
+        <div className="flex flex-col h-full">
         {/* Conversation component - AI SDK UI wrapper for chat messages */}
         {/* Reference: https://ai-sdk.dev/docs/ai-sdk-ui/chatbot#conversation-management */}
         <Conversation className="h-full">
@@ -165,12 +174,12 @@ const ChatBotDemo = () => {
                           {/* Actions for assistant messages - regenerate and copy functionality */}
                           {/* Only show on last assistant message for context */}
                           {message.role === 'assistant' && i === messages.length - 1 && (
-                            <Actions className="mt-2">
+                            <Actions className="">
                               <Action
                                 onClick={() => regenerate()}
                                 label="Retry"
                               >
-                                <RefreshCcwIcon className="size-3" />
+                                <RefreshCcwIcon className="size-3.5" />
                               </Action>
                               <Action
                                 onClick={() =>
@@ -178,7 +187,7 @@ const ChatBotDemo = () => {
                                 }
                                 label="Copy"
                               >
-                                <CopyIcon className="size-3" />
+                                <CopyIcon className="size-3.5" />
                               </Action>
                             </Actions>
                           )}
@@ -266,6 +275,7 @@ const ChatBotDemo = () => {
           <PromptInputBody>
             {/* Textarea for message input - controlled component with local state */}
             <PromptInputTextarea
+              ref={textareaRef}
               onChange={(e) => setInput(e.target.value)}
               value={input}
             />
@@ -273,7 +283,7 @@ const ChatBotDemo = () => {
           <PromptInputToolbar>
             <PromptInputTools>
               {/* Think mode toggle - enables reasoning/chain-of-thought */}
-              <button
+              {/* <button
                 onClick={() => setThinkMode(!thinkMode)}
                 className={`p-2 rounded-md transition-colors ${
                   thinkMode
@@ -283,7 +293,7 @@ const ChatBotDemo = () => {
                 title={thinkMode ? 'Thinking mode enabled' : 'Thinking mode disabled'}
               >
                 <BrainIcon className="size-4" />
-              </button>
+              </button> */}
               {/* Model selection dropdown - allows switching between AI models */}
               {/* Model value is passed via body parameter to API route */}
               <PromptInputModelSelect
@@ -309,6 +319,7 @@ const ChatBotDemo = () => {
             <PromptInputSubmit disabled={!input && !status} status={status} />
           </PromptInputToolbar>
         </PromptInput>
+        </div>
       </div>
     </div>
   );

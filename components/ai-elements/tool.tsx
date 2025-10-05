@@ -28,7 +28,7 @@ export type ToolProps = ComponentProps<typeof Collapsible>;
 export const Tool = ({ className, defaultOpen, ...props }: ToolProps) => {
   return (
     <Collapsible
-      className={cn("not-prose mb-4", className)}
+      className={cn("not-prose my-2", className)}
       defaultOpen={defaultOpen ?? false}
       {...props}
     />

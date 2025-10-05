@@ -49,13 +49,13 @@ export async function POST(request: Request) {
 
     // Apply model-specific configuration
     ...getModelConfig(model),
-    
+
     // System prompt defines AI behavior
     system: SYSTEM_PROMPT,
-    
+
     // User conversation history
     messages: coreMessages,
-    
+
     // Tools available to the AI
     // The AI will automatically decide when to use them based on user queries
     // Reference: https://ai-sdk.dev/docs/foundations/tools
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       // Each tool is a key-value pair: toolName: toolDefinition
       // The toolName is used by the AI when deciding which tool to call
       weather: weatherTool,
-      
+
       // ADD MORE TOOLS HERE:
       // Example: calculator: calculatorTool,
       // Example: search: searchTool,
@@ -71,26 +71,26 @@ export async function POST(request: Request) {
 
     // Automatically choose the best tool to use based on the user's query
     toolChoice: 'auto',
-    
+
     // Enable multi-step calls - allows AI to use tools and then respond
     // stopWhen defines when to stop making additional calls
     // stepCountIs(5) means: stop after 5 steps if tools were called
     // Reference: https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling#multi-step-calls
     stopWhen: stepCountIs(5),
-    
+
     // onStepFinish callback - useful for debugging and logging
     // Fires after each step (tool call or text generation)
     onStepFinish: (step) => {
       console.log(`📝 Tool step completed:`);
-      
+
       if (step.toolCalls && step.toolCalls.length > 0) {
         console.log(`  🔧 Tool calls:`, step.toolCalls.map(tc => tc.toolName));
       }
-      
+
       if (step.toolResults && step.toolResults.length > 0) {
         console.log(`  ✅ Tool results:`, step.toolResults.length);
       }
-      
+
       if (step.text) {
         console.log(`  💬 Generated text: ${step.text.substring(0, 50)}...`);
       }

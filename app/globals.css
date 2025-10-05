@@ -132,4 +132,28 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* Mobile-friendly viewport height using small viewport height (svh) */
+  /* Prevents layout issues with browser URL bars on mobile devices */
+  .h-screen-svh {
+    height: 100svh;
+  }
+  .min-h-screen-svh {
+    min-height: 100svh;
+  }
+
+  /* Hide iOS keyboard accessory bar (up/down arrows and checkmark) */
+  /* This targets the form navigation toolbar that iOS shows above the keyboard */
+  .no-ios-accessory {
+    position: relative;
+    z-index: 1;
+  }
+  
+  /* Additional iOS keyboard toolbar suppression */
+  textarea.no-ios-accessory {
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-user-select: text;
+    user-select: text;
+  }
 }
