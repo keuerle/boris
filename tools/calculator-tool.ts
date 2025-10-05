@@ -12,6 +12,14 @@ import { z } from 'zod';
  * - Synchronous execution (no async needed for simple operations)
  * - Error handling
  */
+
+// Custom UI descriptions for different tool states
+export const calculatorToolDescriptions = {
+  workingDescription: 'Calculating...',
+  completedDescription: 'Calculation completed',
+  errorDescription: 'Calculation failed'
+};
+
 export const calculatorTool = tool({
   description: 'Perform basic mathematical operations: addition, subtraction, multiplication, or division.',
   

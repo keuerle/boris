@@ -26,35 +26,33 @@ export type ToolState =
 export type ToolProps = ComponentProps<typeof Collapsible>;
 
 export const Tool = ({ className, defaultOpen, ...props }: ToolProps) => {
-  // Auto-open if state is output-available or output-error
-  const shouldDefaultOpen = defaultOpen ?? false;
-
   return (
     <Collapsible
       className={cn("not-prose mb-4", className)}
-      defaultOpen={shouldDefaultOpen}
+      defaultOpen={defaultOpen ?? false}
       {...props}
     />
   );
 };
 
 export type ToolHeaderProps = ComponentProps<typeof CollapsibleTrigger> & {
-  type: string;
   state: ToolState;
+  customDescriptions?: {
+    workingDescription?: string;
+    completedDescription?: string;
+    errorDescription?: string;
+  };
 };
 
 export const ToolHeader = ({
   className,
-  type,
   state,
+  customDescriptions,
   children,
   ...props
 }: ToolHeaderProps) => {
-  // Extract tool name from type (e.g., "tool-weather" -> "weather")
-  const toolName = type.startsWith("tool-") ? type.slice(5) : type;
-
-  // Get icon and badge based on state
-  const { icon: Icon, badge, iconClass } = getStateDisplay(state);
+  // Get badge based on state
+  const { badge } = getStateDisplay(state, customDescriptions);
 
   return (
     <CollapsibleTrigger
@@ -67,11 +65,9 @@ export const ToolHeader = ({
       {children ?? (
         <>
           <div className="flex items-center gap-2">
-            <Icon className={cn("h-4 w-4", iconClass)} />
-            <span className="font-medium">{toolName.replace(/_/g, " ")}</span>
+            {badge}
           </div>
           <div className="flex items-center gap-2">
-            {badge}
             <ChevronDownIcon className="h-4 w-4 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
           </div>
         </>
@@ -120,6 +116,34 @@ export type ToolOutputProps = ComponentProps<"div"> & {
   errorText?: string;
 };
 
+const renderOutput = (output: unknown): React.ReactNode => {
+  if (typeof output === "string" || typeof output === "number") {
+    return (
+      <CodeBlock code={String(output)} language="text">
+        <CodeBlockCopyButton />
+      </CodeBlock>
+    );
+  }
+  
+  if (typeof output === "object" && output !== null) {
+    try {
+      const serialized = JSON.stringify(output, null, 2);
+      return (
+        <CodeBlock code={serialized} language="json">
+          <CodeBlockCopyButton />
+        </CodeBlock>
+      );
+    } catch {
+      // If JSON.stringify fails, render the object directly as React content
+      // This handles objects with symbols, functions, or circular references
+      return <div className="text-sm">{output as React.ReactNode}</div>;
+    }
+  }
+  
+  // For other types (boolean, undefined, etc.), render directly
+  return <div className="text-sm">{output as React.ReactNode}</div>;
+};
+
 export const ToolOutput = ({
   className,
   output,
@@ -134,69 +158,59 @@ export const ToolOutput = ({
         {errorText ? "Error" : "Output"}
       </p>
       {errorText ? (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          {errorText}
-        </div>
-      ) : typeof output === "string" || typeof output === "number" ? (
-        <div className="rounded-md border bg-muted/50 p-3 text-sm">
-          {String(output)}
-        </div>
+        <CodeBlock code={errorText} language="text">
+          <CodeBlockCopyButton />
+        </CodeBlock>
       ) : (
-        <div className="text-sm">{output}</div>
+        renderOutput(output)
       )}
     </div>
   );
 };
 
 // Helper function to get icon and badge based on state
-function getStateDisplay(state: ToolState): {
+function getStateDisplay(
+  state: ToolState, 
+  customDescriptions?: {
+    workingDescription?: string;
+    completedDescription?: string;
+    errorDescription?: string;
+  }
+): {
   icon: typeof WrenchIcon;
   badge: React.ReactNode;
   iconClass: string;
 } {
+  const createBadge = (Icon: typeof LoaderIcon, text: string, iconClass?: string) => (
+    <p className="gap-2 flex items-center">
+      <Icon className={cn("h-3 w-3", iconClass)} />
+      {text}
+    </p>
+  );
+
   switch (state) {
     case "input-streaming":
       return {
         icon: WrenchIcon,
-        badge: (
-          <Badge variant="secondary" className="gap-1">
-            <LoaderIcon className="h-3 w-3 animate-spin" />
-            Pending
-          </Badge>
-        ),
+        badge: createBadge(LoaderIcon, customDescriptions?.workingDescription || "Pending", "animate-spin"),
         iconClass: "text-muted-foreground",
       };
     case "input-available":
       return {
         icon: LoaderIcon,
-        badge: (
-          <Badge variant="default" className="gap-1">
-            <LoaderIcon className="h-3 w-3 animate-spin" />
-            Running
-          </Badge>
-        ),
+        badge: createBadge(LoaderIcon, customDescriptions?.workingDescription || "Running", "animate-spin"),
         iconClass: "text-primary animate-pulse",
       };
     case "output-available":
       return {
         icon: CheckCircleIcon,
-        badge: (
-          <Badge variant="secondary" className="gap-1">
-            <CheckCircleIcon className="h-3 w-3" />
-            Completed
-          </Badge>
-        ),
+        badge: createBadge(CheckCircleIcon, customDescriptions?.completedDescription || "Completed"),
         iconClass: "text-green-600 dark:text-green-400",
       };
     case "output-error":
       return {
         icon: XCircleIcon,
-        badge: (
-          <Badge variant="destructive" className="gap-1">
-            <XCircleIcon className="h-3 w-3" />
-            Error
-          </Badge>
-        ),
+        badge: createBadge(XCircleIcon, customDescriptions?.errorDescription || "Error"),
         iconClass: "text-destructive",
       };
   }

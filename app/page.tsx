@@ -31,7 +31,7 @@ import { Fragment, useState } from 'react';
 // Reference: https://ai-sdk.dev/docs/ai-sdk-ui/chatbot
 import { useChat } from '@ai-sdk/react';
 import { Response } from '@/components/ai-elements/response';
-import { CopyIcon, RefreshCcwIcon } from 'lucide-react';
+import { CopyIcon, RefreshCcwIcon, BrainIcon } from 'lucide-react';
 import {
   Source,
   Sources,
@@ -51,33 +51,15 @@ import {
   ToolInput,
   ToolOutput,
 } from '@/components/ai-elements/tool';
-
-// Model configuration - defines available AI models for the chat interface
-// In AI SDK, models are passed via the body parameter when sending messages
-// Reference: https://ai-sdk.dev/docs/ai-sdk-ui/chatbot#model-configuration
-const models = [
-  {
-    name: 'Llama 3.2 Latest',
-    value: 'llama3.2:latest',
-  },
-  {
-    name: 'Llama 3.1 8B',
-    value: 'llama3.1:8b',
-  },
-  {
-    name: 'Phi-4 Mini',
-    value: 'phi4-mini:latest',
-  },
-  {
-    name: 'Qwen 3 Coder',
-    value: 'qwen3-coder:latest',
-  },
-];
+import { weatherToolDescriptions } from '@/tools/weather-tool';
+// Import shared configuration
+import { models, DEFAULT_MODEL } from '@/lib/config';
 
 const ChatBotDemo = () => {
   // Local state for input management and model selection
   const [input, setInput] = useState('');
-  const [model, setModel] = useState<string>(models[0].value);
+  const [model, setModel] = useState<string>(DEFAULT_MODEL);
+  const [thinkMode, setThinkMode] = useState(false);
 
   // AI SDK useChat hook - provides core chat functionality
   // Returns: messages (conversation history), sendMessage (send new messages),
@@ -105,6 +87,7 @@ const ChatBotDemo = () => {
       {
         body: {
           model, // Custom data passed to API route (model selection)
+          think: thinkMode, // Enable/disable reasoning mode
         },
       },
     );
@@ -147,7 +130,15 @@ const ChatBotDemo = () => {
                 )}
                 {/* Map through all message parts - AI SDK supports multiple content types */}
                 {/* Reference: https://ai-sdk.dev/docs/ai-sdk-ui/chatbot#message-parts */}
-                {message.parts.map((part, i) => {
+                {/* Sort parts to ensure reasoning appears before text */}
+                {message.parts
+                  .sort((a, b) => {
+                    // Reasoning parts should come first
+                    if (a.type === 'reasoning' && b.type !== 'reasoning') return -1;
+                    if (a.type !== 'reasoning' && b.type === 'reasoning') return 1;
+                    return 0;
+                  })
+                  .map((part, i) => {
                   switch (part.type) {
                     case 'text':
                       // Skip rendering empty text parts (e.g., when only tools are called)
@@ -200,7 +191,7 @@ const ChatBotDemo = () => {
                         // Reference: https://ai-sdk.dev/docs/ai-sdk-ui/chatbot#reasoning-display
                         <Reasoning
                           key={`${message.id}-${i}`}
-                          className="w-full"
+                          className="w-full mb-1"
                           isStreaming={status === 'streaming' && i === message.parts.length - 1 && message.id === messages.at(-1)?.id}
                         >
                           <ReasoningTrigger />
@@ -214,6 +205,16 @@ const ChatBotDemo = () => {
                         // Type assertion for tool parts with proper typing
                         const toolPart = part as any;
                         
+                        // Get custom descriptions based on tool type
+                        const getCustomDescriptions = (toolType: string) => {
+                          switch (toolType) {
+                            case 'tool-weather':
+                              return weatherToolDescriptions;
+                            default:
+                              return undefined;
+                          }
+                        };
+
                         return (
                           <Tool
                             key={`${message.id}-${i}`}
@@ -225,6 +226,7 @@ const ChatBotDemo = () => {
                             <ToolHeader
                               type={toolPart.type}
                               state={toolPart.state}
+                              customDescriptions={getCustomDescriptions(toolPart.type)}
                             />
                             <ToolContent>
                               <ToolInput input={toolPart.input} />
@@ -270,6 +272,18 @@ const ChatBotDemo = () => {
           </PromptInputBody>
           <PromptInputToolbar>
             <PromptInputTools>
+              {/* Think mode toggle - enables reasoning/chain-of-thought */}
+              <button
+                onClick={() => setThinkMode(!thinkMode)}
+                className={`p-2 rounded-md transition-colors ${
+                  thinkMode
+                    ? 'bg-pink-500/20 text-pink-600 hover:bg-pink-500/30'
+                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                }`}
+                title={thinkMode ? 'Thinking mode enabled' : 'Thinking mode disabled'}
+              >
+                <BrainIcon className="size-4" />
+              </button>
               {/* Model selection dropdown - allows switching between AI models */}
               {/* Model value is passed via body parameter to API route */}
               <PromptInputModelSelect
